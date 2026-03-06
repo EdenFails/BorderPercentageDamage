@@ -91,7 +91,6 @@ namespace BorderPercentageDamage
         }
     }
 
-
     [HarmonyPatch(typeof(ChildRPC), "CallFunction", new System.Type[] { typeof(string) })]
     public class RPCCallPatch 
     { 
