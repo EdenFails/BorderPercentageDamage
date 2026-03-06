@@ -91,9 +91,10 @@ namespace BorderPercentageDamage
         }
     }
 
+
     [HarmonyPatch(typeof(ChildRPC), "CallFunction", new System.Type[] { typeof(string) })]
-    public class RPCCallPatch
-    {
+    public class RPCCallPatch 
+    { 
         private static float timer = 0;
         [HarmonyPrefix]
         static void Prefix(ChildRPC __instance, string key)
