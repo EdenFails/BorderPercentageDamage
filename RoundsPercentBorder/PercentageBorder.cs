@@ -5,61 +5,98 @@ using System.Reflection;
 using UnityEngine;
 using UnboundLib;
 using UnboundLib.Utils.UI;
-using System;
+using UnboundLib.Networking;
+using Photon.Pun;
 using BepInEx.Logging;
+using TMPro;
 
 namespace BorderPercentageDamage
 {
-    [BepInDependency("com.willis.rounds.unbound")] 
-    [BepInPlugin("com.edenfails.percentagedamage", "Border Percentage Damage", "1.0.0")]
+    [BepInDependency("com.willis.rounds.unbound")]
+    [BepInPlugin(ModId, "Border Percentage Damage", "1.0.0")]
     [BepInProcess("ROUNDS.exe")]
     public class BorderPD : BaseUnityPlugin
     {
+        private const string ModId = "com.edenfails.percentagedamage";
         internal static ManualLogSource Log;
         public static BorderPD Instance { get; private set; }
+
         public static ConfigEntry<float> DamagePercentageConfig;
         public static ConfigEntry<float> StaticDamageConfig;
         public static ConfigEntry<float> DamageFrequencySeconds;
+
         private void Awake()
         {
             Log = base.Logger;
             Instance = this;
-            DamagePercentageConfig = Config.Bind("General", "DamagePercentage", 0.1f, "Percentage of max health dealt as extra damage (0.1 = 10%)");
-            StaticDamageConfig = Config.Bind("General", "StaticDamage", 0.7f, "Flat damage added on top of percentage");
-            DamageFrequencySeconds = Config.Bind("General", "DamageFrequencySeconds", 0.25f, "Frequency of percentage Damage Possible");
-            var harmony = new Harmony("com.edenfails.percentagedamage");
+
+            DamagePercentageConfig = Config.Bind("General", "DamagePercentage", 0.1f, "Percentage of max health (0.1 = 10%)");
+            StaticDamageConfig = Config.Bind("General", "StaticDamage", 0.7f, "Flat damage added on top");
+            DamageFrequencySeconds = Config.Bind("General", "DamageFrequencySeconds", 0.25f, "Frequency of damage ticks");
+
+            var harmony = new Harmony(ModId);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
         }
 
         private void Start()
         {
-            Unbound.RegisterMenu("Border Percentage", () => { }, this.NewGUI, null, false);
-           
-        }
+            // This tells Unbound to run 'OnHandShakeCompleted' whenever a player joins or settings change
+            Unbound.RegisterHandshake(ModId, OnHandShakeCompleted);
 
+            Unbound.RegisterMenu("Border Percentage", () => { }, this.NewGUI, null, false);
+        }
 
         private void NewGUI(GameObject menu)
         {
-            MenuHandler.CreateText("Border Damage Settings", menu, out _);
+            MenuHandler.CreateText("Border Damage Settings", menu, out TextMeshProUGUI _);
+
             MenuHandler.CreateSlider("Percent Damage", menu, 30, 0f, 1f, DamagePercentageConfig.Value, (val) => {
                 DamagePercentageConfig.Value = val;
+                OnHandShakeCompleted(); // Force sync when slider moves
             }, out _, false);
 
             MenuHandler.CreateSlider("Static Extra Damage", menu, 30, 0f, 10f, StaticDamageConfig.Value, (val) => {
                 StaticDamageConfig.Value = val;
+                OnHandShakeCompleted();
             }, out _, false);
+
             MenuHandler.CreateSlider("Damage Frequency Seconds", menu, 30, 0f, 3f, DamageFrequencySeconds.Value, (val) => {
                 DamageFrequencySeconds.Value = val;
+                OnHandShakeCompleted();
             }, out _, false);
+        }
+
+        // This is the trigger: Master sends data to everyone else
+        private static void OnHandShakeCompleted()
+        {
+            if (PhotonNetwork.IsMasterClient)
+            {
+                NetworkingManager.RPC_Others(typeof(BorderPD), nameof(SyncSettings),
+                    new object[] {
+                        DamagePercentageConfig.Value,
+                        StaticDamageConfig.Value,
+                        DamageFrequencySeconds.Value
+                    });
+            }
+        }
+
+        // This is the receiver: Clients catch the data and overwrite their local configs
+        [UnboundRPC]
+        private static void SyncSettings(float pct, float stat, float freq)
+        {
+            DamagePercentageConfig.Value = pct;
+            StaticDamageConfig.Value = stat;
+            DamageFrequencySeconds.Value = freq;
+            Log.LogInfo($"Settings Synced: Pct {pct}, Stat {stat}, Freq {freq}");
         }
     }
 
-    [HarmonyPatch(typeof(ChildRPC), "CallFunction", new Type[] { typeof(string) })]
+    [HarmonyPatch(typeof(ChildRPC), "CallFunction", new System.Type[] { typeof(string) })]
     public class RPCCallPatch
     {
-        private static float timer = 1;
+        private static float timer = 0;
         [HarmonyPrefix]
-        static void Prefix(ChildRPC __instance, string key) // add a cool down so it can only damage you a percentage of health every 0.3 seconds (Will add a config for it)
+        static void Prefix(ChildRPC __instance, string key)
         {
             if (key == "OutOfBounds")
             {
@@ -71,21 +108,14 @@ namespace BorderPercentageDamage
                     if (Time.time - timer > DamageCooldown)
                     {
                         timer = Time.time;
-                        float PercentDamage = BorderPD.DamagePercentageConfig.Value;
-                        float StaticDamage = BorderPD.StaticDamageConfig.Value;
-                      
 
-                        Vector3 CameraPosition = MainCam.instance.transform.position;
-                        CameraPosition.z = 0;
-                        Vector2 pushDirection = (CameraPosition - data.transform.position).normalized; // roughly towards the center of the cameras view (usually the center of the map)
+                        Vector3 camPos = MainCam.instance.transform.position;
+                        camPos.z = 0;
+                        Vector2 pushDir = (camPos - data.transform.position).normalized;
 
-                        data.healthHandler.CallTakeDamage((data.maxHealth * PercentDamage + StaticDamage) * pushDirection, data.transform.position);
-                        BorderPD.Log.LogMessage($"Took Damage?\nDamage took was {(data.maxHealth * PercentDamage + StaticDamage)}\nHealth Remaining is {data.health} (probably)");
+                        float finalDmg = (data.maxHealth * BorderPD.DamagePercentageConfig.Value + BorderPD.StaticDamageConfig.Value);
+                        data.healthHandler.CallTakeDamage(pushDir * finalDmg, data.transform.position);
                     }
-                }
-                else
-                {
-                    //BorderPD.Log.LogMessage("Conditions Failed");
                 }
             }
         }
