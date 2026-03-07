@@ -1,6 +1,8 @@
-====================================
+-====================================
+
  BORDER PERCENTAGE DAMAGE
-====================================
+
+-====================================
 
 Tired of the border being a mild annoyance? This mod overhauls the "Out of Bounds" logic to make the map edges truly terrifying, especially in late-game rounds with high health pools.
 
@@ -36,3 +38,4 @@ Damage is calculated like so:
 - UnboundLib
 
 ====================================
+
