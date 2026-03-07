@@ -40,7 +40,7 @@ namespace BorderPercentageDamage
 
         private void Start()
         {
-            // This tells Unbound to run 'OnHandShakeCompleted' whenever a player joins or settings change
+            
             Unbound.RegisterHandshake(ModId, OnHandShakeCompleted);
 
             Unbound.RegisterMenu("Border Percentage", () => { }, this.NewGUI, null, false);
@@ -52,7 +52,7 @@ namespace BorderPercentageDamage
 
             MenuHandler.CreateSlider("Percent Damage", menu, 30, 0f, 1f, DamagePercentageConfig.Value, (val) => {
                 DamagePercentageConfig.Value = val;
-                OnHandShakeCompleted(); // Force sync when slider moves
+                OnHandShakeCompleted(); // Force sync when slider moves - Could cause lag and issues but simple for now, will make it only sync once they close the menu or something in future
             }, out _, false);
 
             MenuHandler.CreateSlider("Static Extra Damage", menu, 30, 0f, 10f, StaticDamageConfig.Value, (val) => {
@@ -66,12 +66,12 @@ namespace BorderPercentageDamage
             }, out _, false);
         }
 
-        // This is the trigger: Master sends data to everyone else
+        // This is the trigger: Master sends data to everyone else when people join
         private static void OnHandShakeCompleted()
         {
             if (PhotonNetwork.IsMasterClient)
             {
-                NetworkingManager.RPC_Others(typeof(BorderPD), nameof(SyncSettings),
+                NetworkingManager.RPC(typeof(BorderPD), nameof(SyncSettings),
                     new object[] {
                         DamagePercentageConfig.Value,
                         StaticDamageConfig.Value,
@@ -80,7 +80,7 @@ namespace BorderPercentageDamage
             }
         }
 
-        // This is the receiver: Clients catch the data and overwrite their local configs
+        // This is the receiver: Clients catch the data and overwrite their local configs -- In future should make it us a temp confige instead of overwriting the local one, but this is simpler for now
         [UnboundRPC]
         private static void SyncSettings(float pct, float stat, float freq)
         {
