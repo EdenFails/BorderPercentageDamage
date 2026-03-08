@@ -1,3 +1,6 @@
+Any issues feel freee to contact me on discord
+edenfails
+
 -====================================
 
  BORDER PERCENTAGE DAMAGE
@@ -38,4 +41,5 @@ Damage is calculated like so:
 - UnboundLib
 
 ====================================
+
 
