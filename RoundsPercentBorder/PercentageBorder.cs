@@ -9,6 +9,7 @@ using UnboundLib.Networking;
 using Photon.Pun;
 using BepInEx.Logging;
 using TMPro;
+using System.Linq;
 
 namespace BorderPercentageDamage
 {
@@ -24,6 +25,7 @@ namespace BorderPercentageDamage
         public static ConfigEntry<float> DamagePercentageConfig;
         public static ConfigEntry<float> StaticDamageConfig;
         public static ConfigEntry<float> DamageFrequencySeconds;
+        public static ConfigEntry<bool> CheckWeirdHealthConfig;
 
         private void Awake()
         {
@@ -33,6 +35,7 @@ namespace BorderPercentageDamage
             DamagePercentageConfig = Config.Bind("General", "DamagePercentage", 0.1f, "Percentage of max health (0.1 = 10%)");
             StaticDamageConfig = Config.Bind("General", "StaticDamage", 0.7f, "Flat damage added on top");
             DamageFrequencySeconds = Config.Bind("General", "DamageFrequencySeconds", 0.25f, "Frequency of damage ticks");
+            CheckWeirdHealthConfig = Config.Bind("General", "CheckWeirdHealth", true, "Enable/Disable the force-kill fix for NaN or Infinite health");
 
             var harmony = new Harmony(ModId);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
@@ -44,8 +47,57 @@ namespace BorderPercentageDamage
             Unbound.RegisterHandshake(ModId, OnHandShakeCompleted);
 
             Unbound.RegisterMenu("Border Percentage", () => { }, this.NewGUI, null, false);
+            
         }
+        private static Player _localPlayer;
+        private static float GetPlayerTimer = 1;
+        private void Update()
+        {
+            if (CheckWeirdHealthConfig.Value)
+            {
+                if (_localPlayer != null)
+                {
 
+                    if (_localPlayer.data != null)
+                    {
+                        if (_localPlayer.data.view.IsMine)
+                        {
+                            if (!_localPlayer.data.dead)
+                            {
+                                if (float.IsNaN(_localPlayer.data.health) || float.IsInfinity(_localPlayer.data.health))
+                                {
+                                    _localPlayer.data.health = 1;
+
+                                    if (_localPlayer.data.stats.remainingRespawns > 0)
+                                    {
+                                        _localPlayer.data.view.RPC("RPCA_Die_Phoenix", Photon.Pun.RpcTarget.All, UnityEngine.Vector2.up);
+                                    }
+                                    else
+                                    {
+                                        _localPlayer.data.view.RPC("RPCA_Die", Photon.Pun.RpcTarget.All, UnityEngine.Vector2.up);
+                                    }
+                                }
+                                return;
+                            }
+                            return;
+                        }
+                        return;
+                    }
+
+
+                    return;
+                }
+                else
+                {
+                    if (Time.time - GetPlayerTimer > 1)
+                    {
+                        GetPlayerTimer = Time.time;
+                        Log.LogInfo("Attempting to get local player...");
+                        _localPlayer = PlayerManager.instance.players.FirstOrDefault(p => p.data.view.IsMine);
+                    }
+                }
+            }
+        }
         private void NewGUI(GameObject menu)
         {
             MenuHandler.CreateText("Border Damage Settings", menu, out TextMeshProUGUI _);
@@ -64,9 +116,14 @@ namespace BorderPercentageDamage
                 DamageFrequencySeconds.Value = val;
                 OnHandShakeCompleted();
             }, out _, false);
+
+            MenuHandler.CreateToggle(CheckWeirdHealthConfig.Value, "Check for Weird Health", menu, (val) => {
+                CheckWeirdHealthConfig.Value = val;
+                OnHandShakeCompleted(); 
+            });
         }
 
-        // This is the trigger: Master sends data to everyone else when people join
+
         private static void OnHandShakeCompleted()
         {
             if (PhotonNetwork.IsMasterClient)
@@ -75,18 +132,22 @@ namespace BorderPercentageDamage
                     new object[] {
                         DamagePercentageConfig.Value,
                         StaticDamageConfig.Value,
-                        DamageFrequencySeconds.Value
+                        DamageFrequencySeconds.Value,
+                        CheckWeirdHealthConfig.Value
                     });
             }
         }
 
-        // This is the receiver: Clients catch the data and overwrite their local configs -- In future should make it us a temp confige instead of overwriting the local one, but this is simpler for now
+     
         [UnboundRPC]
-        private static void SyncSettings(float pct, float stat, float freq)
+        private static void SyncSettings(float pct, float stat, float freq,bool checkHealth)
         {
+
+            if (!PhotonNetwork.IsMasterClient && !PhotonNetwork.InRoom) return;
             DamagePercentageConfig.Value = pct;
             StaticDamageConfig.Value = stat;
             DamageFrequencySeconds.Value = freq;
+            CheckWeirdHealthConfig.Value = checkHealth;
             Log.LogInfo($"Settings Synced: Pct {pct}, Stat {stat}, Freq {freq}");
         }
     }
@@ -113,7 +174,7 @@ namespace BorderPercentageDamage
                         camPos.z = 0;
                         Vector2 pushDir = (camPos - data.transform.position).normalized;
 
-                        float finalDmg = (data.maxHealth * BorderPD.DamagePercentageConfig.Value + BorderPD.StaticDamageConfig.Value);
+                        float finalDmg = ((data.maxHealth * BorderPD.DamagePercentageConfig.Value) + BorderPD.StaticDamageConfig.Value);
                         data.healthHandler.CallTakeDamage(pushDir * finalDmg, data.transform.position);
                     }
                 }
