@@ -14,7 +14,7 @@ using System.Linq;
 namespace BorderPercentageDamage
 {
     [BepInDependency("com.willis.rounds.unbound")]
-    [BepInPlugin(ModId, "Border Percentage Damage", "1.0.0")]
+    [BepInPlugin(ModId, "Border Percentage Damage", "1.0.7")]
     [BepInProcess("ROUNDS.exe")]
     public class BorderPD : BaseUnityPlugin
     {
@@ -57,43 +57,60 @@ namespace BorderPercentageDamage
             {
                 if (_localPlayer != null)
                 {
-
                     if (_localPlayer.data != null)
                     {
                         if (_localPlayer.data.view.IsMine)
                         {
                             if (!_localPlayer.data.dead)
                             {
-                                if (float.IsNaN(_localPlayer.data.health) || float.IsInfinity(_localPlayer.data.health))
+                                if (float.IsNaN(_localPlayer.data.health) || float.IsInfinity(_localPlayer.data.health) || _localPlayer.data.health < 0)
                                 {
                                     _localPlayer.data.health = 1;
 
                                     if (_localPlayer.data.stats.remainingRespawns > 0)
                                     {
+                                        _localPlayer.data.health = 1;
+                                        _localPlayer.data.healthHandler.CallTakeDamage(UnityEngine.Vector2.up * 2, _localPlayer.transform.position);
                                         _localPlayer.data.view.RPC("RPCA_Die_Phoenix", Photon.Pun.RpcTarget.All, UnityEngine.Vector2.up);
+
                                     }
                                     else
                                     {
+                                        _localPlayer.data.health = 1;
+                                        _localPlayer.data.healthHandler.CallTakeDamage(UnityEngine.Vector2.up * 2, _localPlayer.transform.position);
                                         _localPlayer.data.view.RPC("RPCA_Die", Photon.Pun.RpcTarget.All, UnityEngine.Vector2.up);
                                     }
                                 }
+                                else
+                                {
+
+                                    _localPlayer.data.health = 1; // fix if its a nan/inf and then kill you cos what did you do!?
+                                    _localPlayer.data.healthHandler.CallTakeDamage(UnityEngine.Vector2.up * 2, _localPlayer.transform.position);
+                                    return;
+                                }
                                 return;
+                            }
+                            else
+                            {
+                                if (Time.time - GetPlayerTimer > 1)
+                                {
+                                    GetPlayerTimer = Time.time;
+                                    Log.LogInfo("Attempting to get local player...");
+                                    _localPlayer = PlayerManager.instance.players.FirstOrDefault(p => p.data.view.IsMine);
+                                }
                             }
                             return;
                         }
                         return;
                     }
-
-
-                    return;
-                }
-                else
-                {
-                    if (Time.time - GetPlayerTimer > 1)
+                    else
                     {
-                        GetPlayerTimer = Time.time;
-                        Log.LogInfo("Attempting to get local player...");
-                        _localPlayer = PlayerManager.instance.players.FirstOrDefault(p => p.data.view.IsMine);
+                        if (Time.time - GetPlayerTimer > 1)
+                        {
+                            GetPlayerTimer = Time.time;
+                            Log.LogInfo("Attempting to get local player...");
+                            _localPlayer = PlayerManager.instance.players.FirstOrDefault(p => p.data.view.IsMine);
+                        }
                     }
                 }
             }
@@ -117,7 +134,7 @@ namespace BorderPercentageDamage
                 OnHandShakeCompleted();
             }, out _, false);
 
-            MenuHandler.CreateToggle(CheckWeirdHealthConfig.Value, "Check for Weird Health", menu, (val) => {
+            MenuHandler.CreateToggle(CheckWeirdHealthConfig.Value, "Check for Weird Health fix", menu, (val) => {
                 CheckWeirdHealthConfig.Value = val;
                 OnHandShakeCompleted(); 
             });
