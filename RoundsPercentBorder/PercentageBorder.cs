@@ -14,7 +14,7 @@ using System.Linq;
 namespace BorderPercentageDamage
 {
     [BepInDependency("com.willis.rounds.unbound")]
-    [BepInPlugin(ModId, "Border Percentage Damage", "1.0.7")]
+    [BepInPlugin(ModId, "Border Percentage Damage", "1.0.8")]
     [BepInProcess("ROUNDS.exe")]
     public class BorderPD : BaseUnityPlugin
     {
